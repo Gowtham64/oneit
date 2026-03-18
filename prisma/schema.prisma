@@ -1,0 +1,425 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTHENTICATION & AUTHORIZATION
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(USER)
+
+  // MFA
+  mfaEnabled Boolean @default(false)
+  mfaSecret  String?
+
+  // Session tracking
+  lastLoginAt DateTime?
+  lastLoginIp String?
+
+  accounts  Account[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  ADMIN
+  USER
+  SUPER_ADMIN
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// AI CHAT MONITORING
+// ============================================
+
+model ChatConversation {
+  id            String             @id @default(cuid())
+  userId        String? // Optional: link to User if authenticated
+  userEmail     String? // Email of the user chatting
+  userName      String? // Name of the user
+  sessionId     String             @unique // Unique session identifier
+  startedAt     DateTime           @default(now())
+  lastMessageAt DateTime           @updatedAt
+  messageCount  Int                @default(0)
+  topic         String? // Auto-generated topic/summary
+  status        ConversationStatus @default(ACTIVE)
+
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([startedAt])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+model ChatMessage {
+  id             String      @id @default(cuid())
+  conversationId String
+  role           MessageRole // USER or ASSISTANT
+  content        String      @db.Text
+  timestamp      DateTime    @default(now())
+  toolCalls      Json? // Store tool calls made by AI
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([timestamp])
+}
+
+enum ConversationStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// ============================================
+// EMPLOYEE MANAGEMENT
+// ============================================
+
+model Employee {
+  id            String         @id @default(cuid())
+  employeeId    String         @unique
+  firstName     String
+  lastName      String
+  email         String         @unique
+  personalEmail String?
+  phone         String?
+  department    String
+  jobTitle      String
+  manager       String?
+  startDate     DateTime
+  endDate       DateTime?
+  employeeType  String // Full-Time, Part-Time, Contractor
+  location      String
+  status        EmployeeStatus @default(ACTIVE)
+
+  // Laptop Configuration
+  laptopRequired Boolean @default(false)
+  laptopType     String?
+  laptopConfig   String?
+
+  // Google Workspace Configuration
+  googleOrgUnit String? @default("/") // Organizational Unit path
+
+  // Slack Configuration
+  slackMemberType SlackMemberType @default(MEMBER) // Member, Single Channel, Multi Channel
+  slackChannels   Json? // Array of channel IDs/names
+
+  // Relationships
+  onboardingRecords  OnboardingRecord[]
+  offboardingRecords OffboardingRecord[]
+  assetAssignments   AssetAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([department])
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  OFFBOARDING
+  OFFBOARDED
+  SUSPENDED
+}
+
+enum SlackMemberType {
+  MEMBER // Full workspace member
+  SINGLE_CHANNEL // Single channel guest
+  MULTI_CHANNEL // Multi-channel guest
+}
+
+// ============================================
+// ONBOARDING & OFFBOARDING
+// ============================================
+
+model OnboardingRecord {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  status OnboardingStatus @default(PENDING)
+  source String // Manual, HRMS, Bulk
+
+  // System Provisioning Status
+  googleCreated    Boolean @default(false)
+  slackAdded       Boolean @default(false)
+  oktaCreated      Boolean @default(false)
+  microsoftCreated Boolean @default(false)
+  snipeitCreated   Boolean @default(false)
+
+  // Metadata
+  initiatedBy String?
+  completedAt DateTime?
+  errors      Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum OnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+model OffboardingRecord {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  status OffboardingStatus @default(PENDING)
+  source String
+
+  // Asset Collection
+  hasAssets         Boolean @default(false)
+  assetsPending     Boolean @default(false)
+  jiraTicketKey     String?
+  collectionAddress String?
+
+  // System Deactivation Status
+  googleDeactivated    Boolean @default(false)
+  slackRemoved         Boolean @default(false)
+  oktaDeactivated      Boolean @default(false)
+  microsoftDeactivated Boolean @default(false)
+
+  // Metadata
+  initiatedBy String?
+  completedAt DateTime?
+  errors      Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum OffboardingStatus {
+  PENDING
+  ASSET_COLLECTION
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// ASSET MANAGEMENT
+// ============================================
+
+model AssetAssignment {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  assetTag  String
+  assetName String
+  assetType String
+  snipeitId Int
+
+  assignedAt DateTime    @default(now())
+  returnedAt DateTime?
+  status     AssetStatus @default(ASSIGNED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([assetTag])
+}
+
+enum AssetStatus {
+  ASSIGNED
+  PENDING_RETURN
+  RETURNED
+}
+
+// ============================================
+// INTEGRATIONS
+// ============================================
+
+model Integration {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  type    String // google, slack, okta, microsoft, snipeit, hrms
+  enabled Boolean @default(true)
+
+  // Configuration (encrypted)
+  config Json
+
+  // Health Status
+  lastHealthCheck DateTime?
+  healthStatus    HealthStatus @default(UNKNOWN)
+  lastError       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([enabled])
+}
+
+enum HealthStatus {
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+  UNKNOWN
+}
+
+// ============================================
+// AUDIT & COMPLIANCE
+// ============================================
+
+model AuditLog {
+  id         String  @id @default(cuid())
+  eventType  String
+  entityType String? // Employee, User, Integration, etc.
+  entityId   String?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+
+  success      Boolean @default(true)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([eventType])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// SECURITY POLICIES
+// ============================================
+
+model SecurityPolicy {
+  id String @id @default(cuid())
+
+  // MFA Settings
+  mfaRequired Boolean @default(true)
+
+  // Password Requirements
+  passwordMinLength      Int     @default(12)
+  passwordRequireUpper   Boolean @default(true)
+  passwordRequireLower   Boolean @default(true)
+  passwordRequireNumber  Boolean @default(true)
+  passwordRequireSpecial Boolean @default(true)
+
+  // Session Management
+  sessionTimeoutMinutes Int @default(30)
+
+  // IP Whitelisting
+  ipWhitelistEnabled Boolean @default(false)
+  allowedIpRanges    Json?
+
+  // Audit Logging
+  auditLoggingEnabled Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+// ============================================
+// WEBHOOK EVENTS
+// ============================================
+
+model WebhookEvent {
+  id        String @id @default(cuid())
+  source    String // HRMS platform name
+  eventType String
+
+  payload   Json
+  signature String?
+
+  processed   Boolean   @default(false)
+  processedAt DateTime?
+
+  jobId        String?
+  status       WebhookEventStatus @default(PENDING)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([source])
+}
+
+enum WebhookEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
