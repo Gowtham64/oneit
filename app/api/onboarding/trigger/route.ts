@@ -16,118 +16,155 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // --- Database: Ensure Employee & Onboarding Record exist ---
+    const { prisma } = await import('@/lib/prisma');
+    let employee = await prisma.employee.upsert({
+      where: { email },
+      update: {
+        firstName, lastName, personalEmail, department, jobTitle,
+        status: 'ACTIVE',
+      },
+      create: {
+        email, firstName, lastName, personalEmail, department, jobTitle,
+        employeeId: `EMP-${Date.now()}`,
+        location: 'Remote',
+        employeeType: 'Full-Time',
+        startDate: new Date(),
+        status: 'ACTIVE',
+        laptopRequired: !!laptopType,
+        laptopType,
+      }
+    });
+
+    const onboardRecord = await prisma.onboardingRecord.create({
+      data: {
+        employeeId: employee.id,
+        status: 'IN_PROGRESS',
+        source: 'Manual Trigger',
+        initiatedBy: 'System Admin',
+      }
+    });
+
     const results: Record<string, { success: boolean; message: string }> = {};
 
-    // --- Google Workspace: createGoogleUser(email, fullName, orgUnitPath?) ---
+    // Helper to log audit
+    const logAction = async (action: string, success: boolean, msg: string) => {
+      await prisma.auditLog.create({
+        data: {
+          eventType: 'ONBOARDING_ACTION',
+          entityType: 'Employee',
+          entityId: employee?.id,
+          action,
+          success,
+          details: { message: msg },
+        }
+      });
+    };
+
+    // --- Google Workspace ---
     try {
       const { createGoogleUser } = await import('@/services/google');
       await createGoogleUser(email, `${firstName} ${lastName}`, `/${department}`);
-      results.google = { success: true, message: `${email} created in Google Workspace` };
+      results.google = { success: true, message: `${email} created in Google` };
+      await logAction('PROVISION_GOOGLE', true, results.google.message);
     } catch (e: any) {
-      results.google = {
-        success: false,
-        message: e.message?.includes('not found') || e.message?.includes('credentials')
-          ? 'Not configured — add GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_ADMIN_EMAIL to .env'
-          : e.message
-      };
+      results.google = { success: false, message: e.message };
+      await logAction('PROVISION_GOOGLE', false, e.message);
     }
 
-    // --- Okta: createOktaUser({ firstName, lastName, email, department }) ---
+    // --- Okta ---
     try {
       const { createOktaUser } = await import('@/services/okta');
-      await createOktaUser({ firstName, lastName, email, department });
-      results.okta = { success: true, message: 'User activated in Okta' };
+      await createOktaUser(firstName, lastName, email);
+      results.okta = { success: true, message: 'Activated in Okta' };
+      await logAction('PROVISION_OKTA', true, results.okta.message);
     } catch (e: any) {
-      results.okta = {
-        success: false,
-        message: e.message?.includes('OKTA') || e.message?.includes('undefined')
-          ? 'Not configured — add OKTA_API_TOKEN and OKTA_DOMAIN to .env'
-          : e.message
-      };
+      results.okta = { success: false, message: e.message };
+      await logAction('PROVISION_OKTA', false, e.message);
     }
 
-    // --- Microsoft 365: createMicrosoftUser({ firstName, lastName, email, department, jobTitle }) ---
+    // --- Microsoft 365 ---
     try {
       const { createMicrosoftUser } = await import('@/services/microsoft');
-      await createMicrosoftUser({ firstName, lastName, email, department, jobTitle });
+      await createMicrosoftUser(firstName, lastName, email);
       results.m365 = { success: true, message: 'M365 account provisioned' };
+      await logAction('PROVISION_M365', true, results.m365.message);
     } catch (e: any) {
-      results.m365 = {
-        success: false,
-        message: e.message?.includes('AZURE') || e.message?.includes('CLIENT')
-          ? 'Not configured — add AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID to .env'
-          : e.message
-      };
+      results.m365 = { success: false, message: e.message };
+      await logAction('PROVISION_M365', false, e.message);
     }
 
-    // --- Slack: inviteToSlack(email) ---
+    // --- Slack ---
     try {
       const { inviteToSlack } = await import('@/services/slack');
       await inviteToSlack(personalEmail || email);
-      results.slack = { success: true, message: 'Slack invite sent to personal email' };
+      results.slack = { success: true, message: 'Slack invite sent' };
+      await logAction('PROVISION_SLACK', true, results.slack.message);
     } catch (e: any) {
-      results.slack = {
-        success: false,
-        message: e.message?.includes('SLACK') || e.message?.includes('token')
-          ? 'Not configured — add SLACK_BOT_TOKEN to .env'
-          : e.message
-      };
+      results.slack = { success: false, message: e.message };
+      await logAction('PROVISION_SLACK', false, e.message);
     }
 
-    // --- Snipe-IT: createSnipeItUser(firstName, lastName, email) ---
+    // --- Snipe-IT ---
     try {
       const { createSnipeItUser } = await import('@/services/snipeit');
       await createSnipeItUser(firstName, lastName, email);
-      results.snipeit = {
-        success: true,
-        message: `${laptopType || 'Device'} request created in Snipe-IT`
-      };
+      results.snipeit = { success: true, message: 'Snipe-IT user created' };
+      await logAction('PROVISION_SNIPEIT', true, results.snipeit.message);
     } catch (e: any) {
-      results.snipeit = {
-        success: false,
-        message: e.message?.includes('SNIPEIT') || e.message?.includes('undefined')
-          ? 'Not configured — add SNIPEIT_API_URL and SNIPEIT_API_KEY to .env'
-          : e.message
-      };
+      results.snipeit = { success: false, message: e.message };
+      await logAction('PROVISION_SNIPEIT', false, e.message);
     }
 
-    // --- MDM: JAMF for macOS, Scalefusion for Windows ---
+    // --- MDM ---
     try {
       if (laptopOS === 'macOS' || !laptopOS) {
-        const { getAvailableJAMFComputers } = await import('@/services/jamf');
+        const { getAvailableJAMFComputers, assignJAMFComputer } = await import('@/services/jamf');
         const available = await getAvailableJAMFComputers();
         if (available.length > 0) {
-          const { assignJAMFComputer } = await import('@/services/jamf');
           await assignJAMFComputer(available[0].id, email, `${firstName} ${lastName}`);
-          results.mdm = { success: true, message: `JAMF: ${available[0].name} assigned, enrollment triggered` };
+          results.mdm = { success: true, message: `JAMF: ${available[0].name} assigned` };
         } else {
-          results.mdm = { success: true, message: 'JAMF connected — no available Mac to assign right now' };
+          results.mdm = { success: true, message: 'JAMF: Connected (No inventory)' };
         }
       } else {
         const { getAvailableScalefusionDevices, assignScalefusionDevice } = await import('@/services/scalefusion');
         const sfDevices = await getAvailableScalefusionDevices();
         if (sfDevices.length > 0) {
           await assignScalefusionDevice(sfDevices[0].id, email, `${firstName} ${lastName}`);
-          results.mdm = { success: true, message: `Scalefusion: ${sfDevices[0].name || 'Device'} assigned, enrollment sent` };
+          results.mdm = { success: true, message: `Scalefusion: ${sfDevices[0].name} assigned` };
         } else {
-          results.mdm = { success: true, message: 'Scalefusion connected — no available Windows device right now' };
+          results.mdm = { success: true, message: 'Scalefusion: Connected (No inventory)' };
         }
       }
+      await logAction('PROVISION_MDM', true, results.mdm.message);
     } catch (e: any) {
-      results.mdm = {
-        success: false,
-        message: e.message?.includes('JAMF') || e.message?.includes('SCALEFUSION') || !process.env.JAMF_URL
-          ? 'Not configured — add JAMF_URL/CLIENT_ID/SECRET or SCALEFUSION_API_KEY to .env'
-          : e.message
-      };
+      results.mdm = { success: false, message: e.message };
+      await logAction('PROVISION_MDM', false, e.message);
     }
 
     const successCount = Object.values(results).filter(r => r.success).length;
     const total = Object.keys(results).length;
+    const allSuccessful = successCount === total;
+
+    // --- Update Onboarding Record ---
+    await prisma.onboardingRecord.update({
+      where: { id: onboardRecord.id },
+      data: {
+        status: allSuccessful ? 'COMPLETED' : 'PARTIAL',
+        completedAt: allSuccessful ? new Date() : null,
+        errors: allSuccessful ? undefined : results,
+        googleCreated: results.google?.success || false,
+        slackAdded: results.slack?.success || false,
+        oktaCreated: results.okta?.success || false,
+        microsoftCreated: results.m365?.success || false,
+        snipeitCreated: results.snipeit?.success || false,
+      }
+    });
 
     return NextResponse.json({
-      success: successCount === total,
-      partial: successCount > 0 && successCount < total,
+      success: allSuccessful,
+      partial: successCount > 0 && !allSuccessful,
       results,
       summary: `${successCount}/${total} integrations completed`,
     });

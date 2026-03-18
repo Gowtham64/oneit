@@ -68,7 +68,10 @@ export default function OffboardingPage() {
   const [steps, setSteps] = useState<OffboardStep[]>(DEFAULT_STEPS);
   const [csvData, setCsvData] = useState<OffboardEmployee[]>([]);
   const [processingIndex, setProcessingIndex] = useState(-1);
-  const [results, setResults] = useState({ success: 0, failed: 0 });
+  const [results, setResults] = useState({ success: 0, failed: 1 });
+  const [foundAssets, setFoundAssets] = useState<{ id: number; name: string; assetTag: string; model: string }[]>([]);
+  const [isSearchingAssets, setIsSearchingAssets] = useState(false);
+  const [hasLaptopChecked, setHasLaptopChecked] = useState(false);
 
   function updateStep(id: string, updates: Partial<OffboardStep>) {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
@@ -135,6 +138,28 @@ export default function OffboardingPage() {
       ["google","okta","m365","slack","snipeit","mdm"].forEach(s =>
         updateStep(s, { status: "error", message: err.message })
       );
+    }
+  }
+
+  async function lookupAssets(email: string) {
+    if (!email || !email.includes("@")) return;
+    setIsSearchingAssets(true);
+    try {
+      const res = await fetch(`/api/assets/user?email=${encodeURIComponent(email)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.hasAssets) {
+          setFoundAssets(data.assets);
+          setHasLaptopChecked(true);
+        } else {
+          setFoundAssets([]);
+          setHasLaptopChecked(false);
+        }
+      }
+    } catch (err) {
+      console.error("Lookup error:", err);
+    } finally {
+      setIsSearchingAssets(false);
     }
   }
 
@@ -232,17 +257,67 @@ export default function OffboardingPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                  <div><label className={labelCls}>Employee Email *</label><input name="email" type="email" required className={inputCls} placeholder="employee@company.com" /></div>
+                  <div>
+                    <label className={labelCls}>Employee Email *</label>
+                    <div className="relative">
+                      <input
+                        name="email"
+                        type="email"
+                        required
+                        className={inputCls}
+                        placeholder="employee@company.com"
+                        onBlur={(e) => lookupAssets(e.target.value)}
+                      />
+                      {isSearchingAssets && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div><label className={labelCls}>Employee Name</label><input name="employeeName" className={inputCls} placeholder="Jane Smith" /></div>
-                    <div><label className={labelCls}>User ID / Employee ID</label><input name="userId" className={inputCls} placeholder="EMP-12345" /></div>
+                    <div>
+                      <label className={labelCls}>User ID / Employee ID</label>
+                      <input
+                        name="userId"
+                        className={inputCls}
+                        placeholder="EMP-12345"
+                        onBlur={(e) => lookupAssets(e.target.value)}
+                      />
+                    </div>
                   </div>
 
                   <div className="p-5 bg-slate-50 dark:bg-slate-900/40 border border-white/20 rounded-2xl space-y-4">
                     <div className="flex items-center gap-3">
-                      <input type="checkbox" name="hasLaptop" id="hasLaptop" className="w-4 h-4 rounded" />
+                      <input
+                        type="checkbox"
+                        name="hasLaptop"
+                        id="hasLaptop"
+                        className="w-4 h-4 rounded"
+                        checked={hasLaptopChecked}
+                        onChange={(e) => setHasLaptopChecked(e.target.checked)}
+                      />
                       <label htmlFor="hasLaptop" className="text-sm font-semibold cursor-pointer">Employee has a company device to collect</label>
                     </div>
+
+                    {foundAssets.length > 0 && (
+                      <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 space-y-2">
+                        <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                          <Laptop className="w-4 h-4" />
+                          Detected Assets in Snipe-IT:
+                        </p>
+                        <div className="space-y-1">
+                          {foundAssets.map(asset => (
+                            <div key={asset.id} className="text-xs flex justify-between items-center bg-white/50 dark:bg-black/20 p-2 rounded-lg">
+                              <span className="font-semibold">{asset.name || asset.model}</span>
+                              <span className="text-muted-foreground font-mono">{asset.assetTag}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label className={labelCls}>Collection Address</label>
                       <input name="collectionAddress" className={inputCls} placeholder="123 Main St, City, State ZIP" />

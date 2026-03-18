@@ -15,8 +15,9 @@ export async function GET(
     request: NextRequest,
     { params }: { params: { id: string } }
 ) {
+    let authResult: any;
     try {
-        const authResult = await requireAuth(request);
+        authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         const employee = await prisma.employee.findUnique({
@@ -56,8 +57,9 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: { id: string } }
 ) {
+    let authResult: any;
     try {
-        const authResult = await requireAuth(request);
+        authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         const validationResult = await validateRequest(request, updateEmployeeSchema);
@@ -116,8 +118,9 @@ export async function DELETE(
     request: NextRequest,
     { params }: { params: { id: string } }
 ) {
+    let authResult: any;
     try {
-        const authResult = await requireAuth(request);
+        authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         // Check if employee exists

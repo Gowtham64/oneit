@@ -13,9 +13,10 @@ import { employeeSchema, employeeQuerySchema } from '@/lib/validation-schemas';
 
 // GET /api/employees - List all employees with filtering and pagination
 export async function GET(request: NextRequest) {
+    let authResult: any;
     try {
         // Check authentication
-        const authResult = await requireAuth(request);
+        authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         // Validate query parameters
@@ -77,9 +78,10 @@ export async function GET(request: NextRequest) {
 
 // POST /api/employees - Create a new employee
 export async function POST(request: NextRequest) {
+    let authResult: any;
     try {
         // Check authentication
-        const authResult = await requireAuth(request);
+        authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         // Validate request body
