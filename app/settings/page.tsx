@@ -11,8 +11,131 @@ const MOCK_USERS = [
     { id: "3", name: "John Smith", email: "john@example.com", role: "USER", avatar: "JS" },
 ];
 
+// ── Report helper components ────────────────────────────────────────────────
+
+function ComprehensiveReportCard() {
+    const [loading, setLoading] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const download = async () => {
+        setLoading(true);
+        setDone(false);
+        try {
+            const res = await fetch('/api/reports/comprehensive');
+            if (!res.ok) throw new Error('Failed to generate report');
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = Object.assign(document.createElement('a'), {
+                href: url,
+                download: `oneit-full-report-${new Date().toISOString().slice(0, 10)}.csv`,
+            });
+            a.click();
+            URL.revokeObjectURL(url);
+            setDone(true);
+            setTimeout(() => setDone(false), 3000);
+        } catch (e) {
+            alert('Report generation failed — check that your API keys are configured in .env.local');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-6 bg-gradient-to-br from-indigo-900/20 to-purple-900/20 border-2 border-indigo-500/30 rounded-2xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                    <div className="p-3 bg-indigo-500/10 rounded-2xl shrink-0">
+                        <Download className="w-7 h-7 text-indigo-500" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-xl mb-1">Full Platform Report</h3>
+                        <p className="text-sm text-muted-foreground">
+                            One CSV with every data source: Asset inventory from Snipe-IT, Mac devices from JAMF,
+                            Windows devices from Scalefusion, onboarding &amp; offboarding records, audit logs,
+                            and integration status — all in one structured file.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                            {['Snipe-IT Assets', 'JAMF Devices', 'Scalefusion Devices', 'Onboarding', 'Offboarding', 'Audit Logs', 'Integration Status'].map(tag => (
+                                <span key={tag} className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 dark:text-indigo-300 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-indigo-500/20">{tag}</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <button
+                    onClick={download}
+                    disabled={loading}
+                    className="shrink-0 flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl shadow-indigo-500/20 transition-all text-sm"
+                >
+                    {loading ? (
+                        <><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</>
+                    ) : done ? (
+                        <><CheckCircle className="w-4 h-4" /> Downloaded!</>
+                    ) : (
+                        <><Download className="w-4 h-4" /> Download Full Report</>
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+const COLOR_MAP: Record<string, string> = {
+    emerald: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20 border-emerald-700/20',
+    rose:    'bg-rose-600 hover:bg-rose-700 shadow-rose-500/20 border-rose-700/20',
+    amber:   'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 border-amber-700/20',
+    blue:    'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 border-blue-700/20',
+    indigo:  'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20 border-indigo-700/20',
+    purple:  'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20 border-purple-700/20',
+};
+
+function IndividualReport({ title, description, color, apiPath, fileName }: {
+    title: string; description: string; color: string; apiPath: string; fileName: string;
+}) {
+    const [loading, setLoading] = useState(false);
+    const cls = COLOR_MAP[color] ?? COLOR_MAP.indigo;
+
+    const download = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(apiPath);
+            if (!res.ok) throw new Error('Failed');
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            Object.assign(document.createElement('a'), {
+                href: url,
+                download: `${fileName}-${new Date().toISOString().slice(0, 10)}.csv`,
+            }).click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert(`Failed to download ${title} — check API configuration.`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-5 bg-white/30 dark:bg-white/5 rounded-xl border border-white/20 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
+            <h3 className="font-semibold mb-1">{title}</h3>
+            <p className="text-xs text-muted-foreground mb-4">{description}</p>
+            <button
+                onClick={download}
+                disabled={loading}
+                className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg text-xs font-bold shadow-lg transition-all disabled:opacity-50 ${cls}`}
+            >
+                {loading
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating...</>
+                    : <><Download className="w-3.5 h-3.5" /> Download CSV</>}
+            </button>
+        </div>
+    );
+}
+
+// ── Integrations data ───────────────────────────────────────────────────────
+
+
 const INTEGRATIONS = [
     { id: "google", name: "Google Workspace", icon: "https://www.google.com/favicon.ico", status: "connected", description: "User provisioning and directory management." },
+
     { id: "slack", name: "Slack", icon: "https://a.slack-edge.com/80588/marketing/img/meta/favicon-32.png", status: "connected", description: "Channel invitations and messaging." },
     { id: "okta", name: "Okta", icon: "https://www.okta.com/sites/default/files/favicon.ico", status: "error", description: "Identity management and SSO." },
     { id: "microsoft", name: "Microsoft 365", icon: "https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/assets/brand-icons/product/svg/office_48x1.svg", status: "connected", description: "Azure AD user management." },
@@ -731,139 +854,58 @@ export default function SettingsPage() {
                                         System Reports
                                     </h2>
                                     <p className="text-sm text-muted-foreground">
-                                        Generate and download reports for onboarding, offboarding, and asset management activities.
+                                        Generate and download reports from all connected platforms in one click.
                                     </p>
                                 </div>
 
                                 <div className="grid gap-4">
-                                    <div className="p-6 bg-white/30 dark:bg-white/5 rounded-xl border border-white/20 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                                        <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-lg">Onboarding Activity Report</h3>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground mb-4">
-                                                    Comprehensive report of all onboarding activities including employee details, departments, start dates, and system provisioning status.
-                                                </p>
-                                                <button
-                                                    onClick={() => {
-                                                        const csv = "Date,Employee Name,Email,Department,Job Title,Status\\n2024-02-01,John Doe,john@company.com,Engineering,Software Engineer,Completed\\n2024-02-05,Jane Smith,jane@company.com,Marketing,Marketing Manager,Completed";
-                                                        const blob = new Blob([csv], { type: 'text/csv' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `onboarding-report-${new Date().toISOString().split('T')[0]}.csv`;
-                                                        a.click();
-                                                    }}
-                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                    Download CSV
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {/* ── COMPREHENSIVE ALL-TOOLS REPORT (hero card) ── */}
+                                    <ComprehensiveReportCard />
 
-                                    <div className="p-6 bg-white/30 dark:bg-white/5 rounded-xl border border-white/20 hover:border-pink-300 dark:hover:border-pink-700 transition-all">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="p-2 bg-pink-500/10 rounded-lg">
-                                                        <Calendar className="w-5 h-5 text-pink-600 dark:text-pink-400" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-lg">Offboarding Activity Report</h3>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground mb-4">
-                                                    Complete record of offboarding activities including employee details, asset collection status, and system access revocation.
-                                                </p>
-                                                <button
-                                                    onClick={() => {
-                                                        const csv = "Date,Employee Name,Email,Department,Assets Collected,Status\\n2024-02-10,Bob Johnson,bob@company.com,Sales,Yes - Laptop Collected,Completed\\n2024-02-12,Alice Brown,alice@company.com,HR,No Assets,Completed";
-                                                        const blob = new Blob([csv], { type: 'text/csv' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `offboarding-report-${new Date().toISOString().split('T')[0]}.csv`;
-                                                        a.click();
-                                                    }}
-                                                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-pink-500/20"
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                    Download CSV
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-6 bg-white/30 dark:bg-white/5 rounded-xl border border-white/20 hover:border-amber-300 dark:hover:border-amber-700 transition-all">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="p-2 bg-amber-500/10 rounded-lg">
-                                                        <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-lg">Asset Inventory Report</h3>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground mb-4">
-                                                    Full inventory report from Snipe-IT including asset tags, models, assigned users, and availability status.
-                                                </p>
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const res = await fetch('/api/assets/stats');
-                                                            const data = await res.json();
-                                                            const csv = `Asset Report - Generated ${new Date().toISOString()}\\n\\nTotal Assets,Available,Allocated\\n${data.total},${data.available},${data.allocated}\\n\\nNote: For detailed asset information, please access Snipe-IT directly.`;
-                                                            const blob = new Blob([csv], { type: 'text/csv' });
-                                                            const url = URL.createObjectURL(blob);
-                                                            const a = document.createElement('a');
-                                                            a.href = url;
-                                                            a.download = `asset-inventory-${new Date().toISOString().split('T')[0]}.csv`;
-                                                            a.click();
-                                                        } catch (error) {
-                                                            alert('Failed to generate asset report');
-                                                        }
-                                                    }}
-                                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-amber-500/20"
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                    Download CSV
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-6 bg-white/30 dark:bg-white/5 rounded-xl border border-white/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                                                        <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-lg">System Activity Summary</h3>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground mb-4">
-                                                    Aggregated report showing all system activities including onboarding, offboarding, and integration health status.
-                                                </p>
-                                                <button
-                                                    onClick={() => {
-                                                        const csv = "Report Type,Count,Status\\nOnboarding (This Month),12,Active\\nOffboarding (This Month),3,Active\\nActive Integrations,5,Healthy\\nTotal Assets,156,Tracked\\nAvailable Assets,42,Ready";
-                                                        const blob = new Blob([csv], { type: 'text/csv' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `system-activity-${new Date().toISOString().split('T')[0]}.csv`;
-                                                        a.click();
-                                                    }}
-                                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                    Download CSV
-                                                </button>
-                                            </div>
-                                        </div>
+                                    {/* Individual section reports */}
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <IndividualReport
+                                            title="Onboarding Records"
+                                            description="All employee onboarding events with status and provisioning details."
+                                            color="emerald"
+                                            apiPath="/api/reports/comprehensive?section=onboarding"
+                                            fileName="onboarding-report"
+                                        />
+                                        <IndividualReport
+                                            title="Offboarding Records"
+                                            description="Access revocation history including device collection status."
+                                            color="rose"
+                                            apiPath="/api/reports/comprehensive?section=offboarding"
+                                            fileName="offboarding-report"
+                                        />
+                                        <IndividualReport
+                                            title="Asset Inventory (Snipe-IT)"
+                                            description="All hardware assets, assignment status, and purchase details."
+                                            color="amber"
+                                            apiPath="/api/reports/comprehensive?section=assets"
+                                            fileName="asset-inventory"
+                                        />
+                                        <IndividualReport
+                                            title="Device Fleet (JAMF + Scalefusion)"
+                                            description="All Mac and Windows devices with compliance and MDM status."
+                                            color="blue"
+                                            apiPath="/api/reports/comprehensive?section=devices"
+                                            fileName="device-fleet"
+                                        />
+                                        <IndividualReport
+                                            title="Audit Log Export"
+                                            description="Most recent 500 platform events with actor, action, and entity details."
+                                            color="indigo"
+                                            apiPath="/api/reports/comprehensive?section=audit"
+                                            fileName="audit-log"
+                                        />
+                                        <IndividualReport
+                                            title="Integration Status"
+                                            description="Connection status for all configured tools and their API endpoints."
+                                            color="purple"
+                                            apiPath="/api/reports/comprehensive?section=integrations"
+                                            fileName="integration-status"
+                                        />
                                     </div>
                                 </div>
                             </motion.div>
