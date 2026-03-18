@@ -81,50 +81,60 @@ export default function OffboardingPage() {
     setStatus("processing");
     resetSteps();
 
+    // Show all steps as running immediately
+    updateStep("google", { status: "running", message: "Suspending Google Workspace account..." });
+    updateStep("okta", { status: "running", message: "Deactivating Okta user..." });
+    updateStep("m365", { status: "running", message: "Blocking M365 sign-in..." });
+    updateStep("slack", { status: "running", message: "Removing from Slack workspaces..." });
+    updateStep("snipeit", { status: "running", message: "Marking asset for return..." });
+    updateStep("mdm", { status: "running", message: "Initiating remote wipe..." });
+
     try {
-      // Simulate sequential revocation with status updates
-      updateStep("google", { status: "running", message: "Suspending Google Workspace account..." });
-      await new Promise(r => setTimeout(r, 800));
-      updateStep("google", { status: "success", message: `${email} suspended in Google Workspace` });
-
-      updateStep("okta", { status: "running", message: "Deactivating Okta user..." });
-      await new Promise(r => setTimeout(r, 600));
-      updateStep("okta", { status: "success", message: "Okta account deactivated. Sessions cleared." });
-
-      updateStep("m365", { status: "running", message: "Blocking M365 sign-in..." });
-      await new Promise(r => setTimeout(r, 700));
-      updateStep("m365", { status: "success", message: "M365 account blocked. Mailbox access removed." });
-
-      updateStep("slack", { status: "running", message: "Removing from all Slack workspaces..." });
-      const offRes = await fetch('/api/offboarding', {
+      // Call the public trigger endpoint — no auth session required
+      const res = await fetch('/api/offboarding/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, employeeName, userId }),
+        body: JSON.stringify({ email, employeeName, userId, hasLaptop, collectionAddress }),
       });
-      await new Promise(r => setTimeout(r, 500));
 
-      if (offRes.ok) {
-        updateStep("slack", { status: "success", message: "Removed from all Slack channels" });
-        updateStep("snipeit", { status: "running", message: "Marking asset for return..." });
-        await new Promise(r => setTimeout(r, 500));
-        if (hasLaptop && collectionAddress) {
-          updateStep("snipeit", { status: "success", message: `Collection scheduled at: ${collectionAddress}` });
-        } else {
-          updateStep("snipeit", { status: "success", message: "Asset status set to 'Awaiting Return'" });
+      const result = await res.json();
+
+      if (res.ok && result.results) {
+        const r = result.results;
+        const map: Record<string, string> = {
+          google: "google", okta: "okta", m365: "m365",
+          slack: "slack", snipeit: "snipeit", mdm: "mdm"
+        };
+        for (const [key, stepId] of Object.entries(map)) {
+          const stepResult = r[key];
+          if (stepResult) {
+            updateStep(stepId, {
+              status: stepResult.success ? "success" : "error",
+              message: stepResult.message,
+            });
+          }
         }
-        updateStep("mdm", { status: "running", message: "Initiating remote wipe command..." });
-        await new Promise(r => setTimeout(r, 600));
-        updateStep("mdm", { status: "success", message: "Remote wipe queued. IT team notified." });
-        setStatus("success");
+        setStatus(result.success ? "success" : "error");
       } else {
-        updateStep("slack", { status: "error", message: "Could not reach Slack API" });
-        updateStep("snipeit", { status: "error", message: "Manual follow-up required" });
-        updateStep("mdm", { status: "error", message: "Manual wipe required" });
+        // API not fully connected — show setup instructions
+        const messages: Record<string, string> = {
+          google: `Configure GOOGLE_SERVICE_ACCOUNT_KEY in .env`,
+          okta: `Configure OKTA_API_TOKEN in .env`,
+          m365: `Configure AZURE_CLIENT_SECRET in .env`,
+          slack: `Configure SLACK_BOT_TOKEN in .env`,
+          snipeit: `Configure SNIPEIT_API_KEY in .env`,
+          mdm: `Configure JAMF or SCALEFUSION keys in .env`,
+        };
+        Object.entries(messages).forEach(([id, msg]) =>
+          updateStep(id, { status: "error" as const, message: msg })
+        );
         setStatus("error");
       }
     } catch (err: any) {
       setStatus("error");
-      updateStep("google", { status: "error", message: err.message });
+      ["google","okta","m365","slack","snipeit","mdm"].forEach(s =>
+        updateStep(s, { status: "error", message: err.message })
+      );
     }
   }
 

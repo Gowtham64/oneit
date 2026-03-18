@@ -99,70 +99,60 @@ export default function OnboardingPage() {
     setStatus("processing");
     resetSteps();
 
+    // Set all steps to running immediately to show activity
+    updateStep("google", { status: "running", message: "Creating Google Workspace account..." });
+    updateStep("okta", { status: "running", message: "Provisioning Okta identity..." });
+    updateStep("m365", { status: "running", message: "Setting up M365 mailbox..." });
+    updateStep("slack", { status: "running", message: "Sending Slack invite..." });
+    updateStep("snipeit", { status: "running", message: "Searching for available asset..." });
+    updateStep("mdm", { status: "running", message: "Triggering MDM enrollment..." });
+
     try {
-      // Step 1: Create employee record
-      const empRes = await fetch('/api/employees', {
+      // Call the public trigger endpoint — no auth session required
+      const res = await fetch('/api/onboarding/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName: data.firstName, lastName: data.lastName,
-          email: data.email, department: data.department,
-          jobTitle: data.jobTitle, startDate: data.startDate,
-          employeeId: data.employeeId, manager: data.manager,
-          personalEmail: data.personalEmail, phone: data.phone,
-          laptopRequired: data.laptopRequired === 'yes',
-          laptopType: data.laptopType, laptopConfig: data.laptopConfig,
-        }),
+        body: JSON.stringify(data),
       });
 
-      if (!empRes.ok) {
-        const err = await empRes.json();
-        throw new Error(err.error || 'Failed to create employee record');
-      }
+      const result = await res.json();
 
-      const { data: employee } = await empRes.json();
-
-      // Step 2: Call onboarding API (which queues all integrations)
-      updateStep("google", { status: "running", message: "Creating Google Workspace account..." });
-      updateStep("okta", { status: "running", message: "Provisioning Okta identity..." });
-      updateStep("m365", { status: "running", message: "Setting up M365 mailbox..." });
-
-      const onboardRes = await fetch('/api/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: employee.id, source: 'MANUAL', initiatedBy: data.email }),
-      });
-
-      if (onboardRes.ok) {
-        updateStep("google", { status: "success", message: `${data.email} created in Google Workspace` });
-        updateStep("okta", { status: "success", message: "User activated in Okta" });
-        updateStep("m365", { status: "success", message: "M365 account provisioned" });
-        updateStep("slack", { status: "running", message: "Sending Slack invite..." });
-        await new Promise(r => setTimeout(r, 800));
-        updateStep("slack", { status: "success", message: "Slack invite sent to personal email" });
-        updateStep("snipeit", { status: "running", message: "Searching for available asset..." });
-        await new Promise(r => setTimeout(r, 600));
-        updateStep("snipeit", {
-          status: "success",
-          message: data.laptopType ? `${data.laptopType} assigned` : "Asset allocated from inventory"
-        });
-        updateStep("mdm", { status: "running", message: "Triggering MDM enrollment profile..." });
-        await new Promise(r => setTimeout(r, 500));
-        updateStep("mdm", {
-          status: "success",
-          message: data.laptopOS === 'macOS' ? "JAMF enrollment triggered" : "Scalefusion enrollment triggered"
-        });
-        setStatus("success");
+      if (res.ok && result.results) {
+        // Apply per-integration results from the server
+        const r = result.results;
+        const map: Record<string, string> = {
+          google: "google", okta: "okta", m365: "m365",
+          slack: "slack", snipeit: "snipeit", mdm: "mdm"
+        };
+        for (const [key, stepId] of Object.entries(map)) {
+          const stepResult = r[key];
+          if (stepResult) {
+            updateStep(stepId, {
+              status: stepResult.success ? "success" : "error",
+              message: stepResult.message,
+            });
+          }
+        }
+        setStatus(result.success ? "success" : "error");
       } else {
-        const err = await onboardRes.json();
-        updateStep("google", { status: "error", message: err.error });
-        updateStep("okta", { status: "error", message: "Queued but not started" });
-        updateStep("m365", { status: "error", message: "Queued but not started" });
+        // API not fully connected — show graceful fallback
+        const steps = ["google", "okta", "m365", "slack", "snipeit", "mdm"];
+        const messages: Record<string, string> = {
+          google: `${data.email} — configure GOOGLE_SERVICE_ACCOUNT_KEY in .env`,
+          okta: `Configure OKTA_API_TOKEN in .env`,
+          m365: `Configure AZURE_CLIENT_SECRET in .env`,
+          slack: `Configure SLACK_BOT_TOKEN in .env`,
+          snipeit: `Configure SNIPEIT_API_KEY in .env`,
+          mdm: `Configure JAMF or SCALEFUSION keys in .env`,
+        };
+        steps.forEach(s => updateStep(s, { status: "warning" as any, message: messages[s] }));
         setStatus("error");
       }
     } catch (err: any) {
       setStatus("error");
-      updateStep("google", { status: "error", message: err.message });
+      ["google","okta","m365","slack","snipeit","mdm"].forEach(s =>
+        updateStep(s, { status: "error", message: err.message })
+      );
     }
   }
 
