@@ -86,6 +86,7 @@ const COLOR_MAP: Record<string, string> = {
     blue:    'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 border-blue-700/20',
     indigo:  'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20 border-indigo-700/20',
     purple:  'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20 border-purple-700/20',
+    teal:    'bg-teal-600 hover:bg-teal-700 shadow-teal-500/20 border-teal-700/20',
 };
 
 function IndividualReport({ title, description, color, apiPath, fileName }: {
@@ -905,6 +906,20 @@ export default function SettingsPage() {
                                             color="purple"
                                             apiPath="/api/reports/comprehensive?section=integrations"
                                             fileName="integration-status"
+                                        />
+                                        <IndividualReport
+                                            title="Onboarding CSV Template"
+                                            description="Download a ready-to-fill onboarding CSV with all required column headers and 3 example rows."
+                                            color="teal"
+                                            apiPath="/api/reports/template/onboarding"
+                                            fileName="onboarding-template"
+                                        />
+                                        <IndividualReport
+                                            title="Offboarding CSV Template"
+                                            description="Download a ready-to-fill offboarding CSV with all required column headers and 3 example rows."
+                                            color="rose"
+                                            apiPath="/api/reports/template/offboarding"
+                                            fileName="offboarding-template"
                                         />
                                     </div>
                                 </div>

@@ -1,14 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, errorResponse, paginatedResponse } from '@/lib/api-middleware';
+import { requireAdminOrSuperAdmin, errorResponse, paginatedResponse } from '@/lib/api-middleware';
 
 export async function GET(req: NextRequest) {
     try {
-        // Require admin role
-        const session = await requireAuth(req);
-        if (session.user.role !== 'ADMIN') {
-            return errorResponse('Unauthorized - Admin access required', 403);
-        }
+        const authResult = await requireAdminOrSuperAdmin(req);
+        if (authResult.error) return authResult.response;
 
         const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get('page') || '1');

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
-    requireAuth,
+    requireAdminOrSuperAdmin,
     handleApiError,
     successResponse,
     errorResponse,
@@ -10,14 +10,15 @@ import {
 // GET /api/offboarding/[id] - Get offboarding status
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const authResult = await requireAuth(request);
+        const { id } = await params;
+        const authResult = await requireAdminOrSuperAdmin(request);
         if (authResult.error) return authResult.response;
 
         const offboardingRecord = await prisma.offboardingRecord.findUnique({
-            where: { id: params.id },
+            where: { id },
             include: {
                 employee: true,
             },

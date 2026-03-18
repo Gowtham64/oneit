@@ -202,11 +202,16 @@ export default function OffboardingPage() {
     setStatus("success");
   };
 
-  const downloadTemplate = () => {
-    const csv = "email,userId,reason\njohn.doe@company.com,12345,Resignation\njane.smith@company.com,67890,Contract End";
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "offboarding_template.csv" });
-    a.click();
+  const downloadTemplate = async () => {
+    try {
+      const res = await fetch('/api/reports/template/offboarding');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: 'offboarding_template.csv' }).click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download template.');
+    }
   };
 
   const inputCls = "w-full px-4 py-3 bg-white/50 dark:bg-black/20 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/50 transition-all text-sm";

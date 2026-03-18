@@ -13,7 +13,7 @@ export async function requireAuth(request: NextRequest) {
 
     if (!session || !session.user) {
         return {
-            error: true,
+            error: true as const,
             response: NextResponse.json(
                 { error: 'Unauthorized', message: 'You must be logged in to access this resource' },
                 { status: 401 }
@@ -21,14 +21,14 @@ export async function requireAuth(request: NextRequest) {
         };
     }
 
-    return { error: false, session };
+    return { error: false as const, session };
 }
 
-export async function requireRole(request: NextRequest, requiredRole: 'ADMIN' | 'USER') {
+export async function requireRole(request: NextRequest, requiredRole: 'ADMIN' | 'USER' | 'SUPER_ADMIN') {
     const authResult = await requireAuth(request);
 
     if (authResult.error) {
-        return authResult;
+        return { error: true as const, response: authResult.response };
     }
 
     const user = await prisma.user.findUnique({
@@ -36,9 +36,22 @@ export async function requireRole(request: NextRequest, requiredRole: 'ADMIN' | 
         select: { role: true },
     });
 
-    if (!user || user.role !== requiredRole) {
+    if (!user) {
         return {
-            error: true,
+            error: true as const,
+            response: NextResponse.json(
+                { error: 'Forbidden', message: 'User not found in system' },
+                { status: 403 }
+            ),
+        };
+    }
+
+    // SUPER_ADMIN can always pass any role check
+    const hasAccess = user.role === 'SUPER_ADMIN' || user.role === requiredRole;
+
+    if (!hasAccess) {
+        return {
+            error: true as const,
             response: NextResponse.json(
                 { error: 'Forbidden', message: 'You do not have permission to access this resource' },
                 { status: 403 }
@@ -46,7 +59,33 @@ export async function requireRole(request: NextRequest, requiredRole: 'ADMIN' | 
         };
     }
 
-    return { error: false, session: authResult.session, user };
+    return { error: false as const, session: authResult.session, user };
+}
+
+// Shortcut: allow ADMIN or SUPER_ADMIN (most common admin check)
+export async function requireAdminOrSuperAdmin(request: NextRequest) {
+    const authResult = await requireAuth(request);
+
+    if (authResult.error) {
+        return { error: true as const, response: authResult.response };
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: authResult.session.user?.email! },
+        select: { role: true },
+    });
+
+    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
+        return {
+            error: true as const,
+            response: NextResponse.json(
+                { error: 'Forbidden', message: 'Admin access required' },
+                { status: 403 }
+            ),
+        };
+    }
+
+    return { error: false as const, session: authResult.session, user };
 }
 
 // ============================================
@@ -124,11 +163,11 @@ export function handleApiError(error: any, context?: string) {
         );
     }
 
-    // Generic error
+    // Generic error — never leak internal error details
     return NextResponse.json(
         {
             error: 'Internal Server Error',
-            message: error.message || 'An unexpected error occurred',
+            message: 'An unexpected error occurred',
         },
         { status: 500 }
     );

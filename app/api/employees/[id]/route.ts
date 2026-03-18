@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
-    requireAuth,
+    requireAdminOrSuperAdmin,
     validateRequest,
     handleApiError,
     logAuditEvent,
@@ -13,15 +13,15 @@ import { updateEmployeeSchema } from '@/lib/validation-schemas';
 // GET /api/employees/[id] - Get employee by ID
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-    let authResult: any;
+    const { id } = await params;
     try {
-        authResult = await requireAuth(request);
+        const authResult = await requireAdminOrSuperAdmin(request);
         if (authResult.error) return authResult.response;
 
         const employee = await prisma.employee.findUnique({
-            where: { id: params.id },
+            where: { id },
             include: {
                 onboardingRecords: {
                     orderBy: { createdAt: 'desc' },
@@ -48,18 +48,18 @@ export async function GET(
 
         return successResponse(employee);
     } catch (error) {
-        return handleApiError(error, `GET /api/employees/${params.id}`);
+        return handleApiError(error, `GET /api/employees/${id}`);
     }
 }
 
 // PUT /api/employees/[id] - Update employee
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-    let authResult: any;
+    const { id } = await params;
     try {
-        authResult = await requireAuth(request);
+        const authResult = await requireAdminOrSuperAdmin(request);
         if (authResult.error) return authResult.response;
 
         const validationResult = await validateRequest(request, updateEmployeeSchema);
@@ -69,7 +69,7 @@ export async function PUT(
 
         // Check if employee exists
         const existingEmployee = await prisma.employee.findUnique({
-            where: { id: params.id },
+            where: { id },
         });
 
         if (!existingEmployee) {
@@ -78,7 +78,7 @@ export async function PUT(
 
         // Update employee
         const employee = await prisma.employee.update({
-            where: { id: params.id },
+            where: { id },
             data: {
                 ...data,
                 startDate: data.startDate ? new Date(data.startDate) : undefined,
@@ -98,34 +98,23 @@ export async function PUT(
 
         return successResponse(employee);
     } catch (error) {
-        await logAuditEvent({
-            eventType: 'EMPLOYEE_UPDATE_FAILED',
-            action: 'UPDATE',
-            entityType: 'Employee',
-            entityId: params.id,
-            userId: authResult.session?.user?.email,
-            request,
-            success: false,
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        });
-
-        return handleApiError(error, `PUT /api/employees/${params.id}`);
+        return handleApiError(error, `PUT /api/employees/${id}`);
     }
 }
 
 // DELETE /api/employees/[id] - Soft delete employee
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-    let authResult: any;
+    const { id } = await params;
     try {
-        authResult = await requireAuth(request);
+        const authResult = await requireAdminOrSuperAdmin(request);
         if (authResult.error) return authResult.response;
 
         // Check if employee exists
         const existingEmployee = await prisma.employee.findUnique({
-            where: { id: params.id },
+            where: { id },
         });
 
         if (!existingEmployee) {
@@ -134,7 +123,7 @@ export async function DELETE(
 
         // Soft delete by setting status to OFFBOARDED
         const employee = await prisma.employee.update({
-            where: { id: params.id },
+            where: { id },
             data: { status: 'OFFBOARDED' },
         });
 
@@ -150,17 +139,6 @@ export async function DELETE(
 
         return successResponse({ message: 'Employee deleted successfully', employee });
     } catch (error) {
-        await logAuditEvent({
-            eventType: 'EMPLOYEE_DELETE_FAILED',
-            action: 'DELETE',
-            entityType: 'Employee',
-            entityId: params.id,
-            userId: authResult.session?.user?.email,
-            request,
-            success: false,
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        });
-
-        return handleApiError(error, `DELETE /api/employees/${params.id}`);
+        return handleApiError(error, `DELETE /api/employees/${id}`);
     }
 }

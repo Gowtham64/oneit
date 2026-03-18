@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAdminOrSuperAdmin, requireRole } from '@/lib/api-middleware';
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminOrSuperAdmin(request);
+  if (authResult.error) return authResult.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category') || 'all';
-    const limit = parseInt(searchParams.get('limit') || '50');
+    // Hard cap at 500 to prevent abuse
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 500);
 
     // Build filter
     const where: any = {};
@@ -50,8 +55,11 @@ function mapEventToCategory(eventType: string): string {
   return 'system';
 }
 
-// POST endpoint to write new audit events
+// POST endpoint to write new audit events — restricted to SUPER_ADMIN
 export async function POST(request: NextRequest) {
+  const authResult = await requireRole(request, 'SUPER_ADMIN');
+  if (authResult.error) return authResult.response;
+
   try {
     const body = await request.json();
     const { action, actor, target, category, severity, detail } = body;
@@ -63,7 +71,7 @@ export async function POST(request: NextRequest) {
         userId: actor,
         entityId: target,
         entityType: category || 'system',
-        metadata: { severity: severity || 'info', detail },
+        details: { severity: severity || 'info', detail },
       },
     });
 

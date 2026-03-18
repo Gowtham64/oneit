@@ -190,11 +190,16 @@ export default function OnboardingPage() {
     setStatus("success");
   };
 
-  const downloadTemplate = () => {
-    const csv = "firstName,lastName,email,personalEmail,phone,department,jobTitle,employeeId,startDate,manager,laptopRequired,laptopOS,laptopType,laptopConfig\nJohn,Doe,john.doe@company.com,john@gmail.com,+1-555-0001,Engineering,Software Engineer,EMP-001,2026-04-01,Jane Smith,yes,macOS,MacBook Pro 14,Standard - 16GB RAM 512GB SSD";
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "onboarding_template.csv" });
-    a.click();
+  const downloadTemplate = async () => {
+    try {
+      const res = await fetch('/api/reports/template/onboarding');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: 'onboarding_template.csv' }).click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download template.');
+    }
   };
 
   const inputCls = "w-full px-4 py-3 bg-white/50 dark:bg-black/20 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all text-sm";

@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createGoogleUser, deleteGoogleUser } from "@/services/google";
-import { inviteUserToSlack, createSlackChannel, sendMessage } from "@/services/slack";
+import { inviteToSlack, createSlackChannel, sendMessage } from "@/services/slack";
 import { createOktaUser, deactivateOktaUser } from "@/services/okta";
 import { createMicrosoftUser, deleteMicrosoftUser } from "@/services/microsoft";
 import { createSnipeItUser, checkOutAsset } from "@/services/snipeit";
@@ -35,7 +35,7 @@ export const tools = {
 
             // 2. Slack
             try {
-                results.slack = await inviteUserToSlack(email);
+                results.slack = await inviteToSlack(email);
             } catch (e: any) {
                 results.errors.push(`Slack: ${e.message}`);
             }

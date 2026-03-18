@@ -137,3 +137,46 @@ export async function getSlackChannels() {
         throw error;
     }
 }
+/**
+ * Create a new Slack channel
+ */
+export async function createSlackChannel(name: string) {
+    try {
+        const response = await axios.post(
+            `${SLACK_API_URL}/conversations.create`,
+            { name },
+            { headers: getSlackHeaders() }
+        );
+
+        if (!response.data.ok) {
+            throw new Error(response.data.error || 'Failed to create Slack channel');
+        }
+
+        return response.data.channel;
+    } catch (error: any) {
+        console.error('Error creating Slack channel:', error);
+        throw error;
+    }
+}
+
+/**
+ * Send a message to a Slack channel
+ */
+export async function sendMessage(channelId: string, text: string) {
+    try {
+        const response = await axios.post(
+            `${SLACK_API_URL}/chat.postMessage`,
+            { channel: channelId, text },
+            { headers: getSlackHeaders() }
+        );
+
+        if (!response.data.ok) {
+            throw new Error(response.data.error || 'Failed to send Slack message');
+        }
+
+        return response.data;
+    } catch (error: any) {
+        console.error('Error sending message to Slack:', error);
+        throw error;
+    }
+}

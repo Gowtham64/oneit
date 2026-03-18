@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
-    requireRole,
+    requireAdminOrSuperAdmin,
     validateRequest,
     handleApiError,
     logAuditEvent,
@@ -13,11 +13,12 @@ import { integrationConfigSchema } from '@/lib/validation-schemas';
 // PUT /api/integrations/[id] - Update integration config
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     try {
-        const roleResult = await requireRole(request, 'ADMIN');
-        if (roleResult.error) return roleResult.response;
+        const authResult = await requireAdminOrSuperAdmin(request);
+        if (authResult.error) return authResult.response;
 
         const validationResult = await validateRequest(request, integrationConfigSchema.partial());
         if (validationResult.error) return validationResult.response;
@@ -25,7 +26,7 @@ export async function PUT(
         const data = validationResult.data!;
 
         const integration = await prisma.integration.update({
-            where: { id: params.id },
+            where: { id },
             data,
         });
 
@@ -34,13 +35,13 @@ export async function PUT(
             action: 'UPDATE',
             entityType: 'Integration',
             entityId: integration.id,
-            userId: roleResult.session.user?.email!,
+            userId: authResult.session.user?.email!,
             details: { changes: data },
             request,
         });
 
         return successResponse(integration);
     } catch (error) {
-        return handleApiError(error, `PUT /api/integrations/${params.id}`);
+        return handleApiError(error, `PUT /api/integrations/${id}`);
     }
 }

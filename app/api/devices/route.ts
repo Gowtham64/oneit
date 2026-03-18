@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api-middleware';
 
 const JAMF_URL = process.env.JAMF_URL;
 const JAMF_CLIENT_ID = process.env.JAMF_CLIENT_ID;
@@ -69,9 +70,11 @@ async function fetchScalefusionDevices() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.response;
+
   try {
-    // Try to fetch from real APIs, fall back to empty arrays if not configured
     const jamfDevices = JAMF_URL && JAMF_CLIENT_ID
       ? await getJamfToken().then(t => t ? fetchJamfDevices(t) : [])
       : [];
@@ -82,29 +85,16 @@ export async function GET() {
 
     const allDevices = [...jamfDevices, ...sfDevices];
 
-    // If no integrations are configured, return helpful message
-    if (allDevices.length === 0) {
-      return NextResponse.json({
-        devices: [],
-        meta: {
-          total: 0,
-          jamf: 0,
-          scalefusion: 0,
-          configured: {
-            jamf: !!(JAMF_URL && JAMF_CLIENT_ID),
-            scalefusion: !!(SF_URL && SF_KEY),
-          },
-        },
-      });
-    }
-
     return NextResponse.json({
       devices: allDevices,
       meta: {
         total: allDevices.length,
         jamf: jamfDevices.length,
         scalefusion: sfDevices.length,
-        configured: { jamf: true, scalefusion: true },
+        configured: {
+          jamf: !!(JAMF_URL && JAMF_CLIENT_ID),
+          scalefusion: !!(SF_URL && SF_KEY),
+        },
       },
     });
   } catch (error) {

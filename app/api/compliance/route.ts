@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api-middleware';
 
 const JAMF_URL = process.env.JAMF_URL;
 const JAMF_CLIENT_ID = process.env.JAMF_CLIENT_ID;
@@ -23,7 +24,10 @@ async function getJamfToken(): Promise<string | null> {
   } catch { return null; }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.response;
+
   try {
     let jamfCompliance: any[] = [];
     let sfCompliance: any[] = [];

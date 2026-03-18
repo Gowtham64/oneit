@@ -10,14 +10,15 @@ import {
 // GET /api/onboarding/[id] - Get onboarding status
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     try {
         const authResult = await requireAuth(request);
         if (authResult.error) return authResult.response;
 
         const onboardingRecord = await prisma.onboardingRecord.findUnique({
-            where: { id: params.id },
+            where: { id },
             include: {
                 employee: true,
             },

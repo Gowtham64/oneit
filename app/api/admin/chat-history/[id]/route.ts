@@ -1,17 +1,14 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, errorResponse, successResponse } from '@/lib/api-middleware';
+import { requireAdminOrSuperAdmin, errorResponse, successResponse } from '@/lib/api-middleware';
 
 export async function GET(
     req: NextRequest,
     { params }: { params: { id: string } }
 ) {
     try {
-        // Require admin role
-        const session = await requireAuth(req);
-        if (session.user.role !== 'ADMIN') {
-            return errorResponse('Unauthorized - Admin access required', 403);
-        }
+        const authResult = await requireAdminOrSuperAdmin(req);
+        if (authResult.error) return authResult.response;
 
         const conversation = await prisma.chatConversation.findUnique({
             where: { id: params.id },
